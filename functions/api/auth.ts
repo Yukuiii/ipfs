@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import type { UserCredentialsRequestDto } from "./type";
+import type { UserCredentialsRequestDto } from "./dto";
 
 /**
  * Cloudflare Pages Functions 环境变量类型。
