@@ -13,36 +13,52 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const email = ref("");
+const username = ref("");
 const password = ref("");
 const rememberMe = ref(true);
 const submitting = ref(false);
 const submitMessage = ref("");
-
-const emailError = computed(() => {
-  if (!email.value) return "";
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value) ? "" : "邮箱格式不正确";
-});
+const submitError = ref("");
 
 const canSubmit = computed(
   () =>
     !submitting.value &&
-    email.value.length > 0 &&
-    password.value.length > 0 &&
-    !emailError.value
+    username.value.length > 0 &&
+    password.value.length > 0
 );
 
 /**
- * 登录提交处理（示例）。
- * 这里只做最小 UI 演示，不包含真实鉴权逻辑。
+ * 登录提交处理。
+ * 说明：调用 Pages Functions 的 `/api/auth/login`，返回结果仅用于演示 UI。
  */
 async function onSubmit() {
   submitting.value = true;
   submitMessage.value = "";
+  submitError.value = "";
   try {
-    // 这里预留对接真实登录 API 的位置；当前仅做 UI/交互验证。
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    submitMessage.value = `已提交：${email.value}（记住我：${rememberMe.value ? "是" : "否"}）`;
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: username.value,
+        password: password.value,
+        rememberMe: rememberMe.value,
+      }),
+    });
+
+    const data = (await response.json().catch(() => null)) as
+      | { ok: true; user: { username: string } }
+      | { ok: false; message?: string }
+      | null;
+
+    if (!response.ok || !data || data.ok !== true) {
+      const message =
+        (data && "message" in data && data.message) || "登录失败，请重试";
+      submitError.value = message;
+      return;
+    }
+
+    submitMessage.value = `登录成功：${data.user.username}`;
   } finally {
     submitting.value = false;
   }
@@ -62,17 +78,14 @@ async function onSubmit() {
       <form @submit.prevent="onSubmit">
         <CardContent class="space-y-4">
           <div class="space-y-2">
-            <Label for="email">邮箱</Label>
+            <Label for="username">用户名</Label>
             <Input
-              id="email"
-              v-model="email"
-              type="email"
-              autocomplete="email"
-              placeholder="you@example.com"
+              id="username"
+              v-model="username"
+              type="text"
+              autocomplete="username"
+              placeholder="输入用户名"
             />
-            <p v-if="emailError" class="text-sm text-destructive">
-              {{ emailError }}
-            </p>
           </div>
 
           <div class="space-y-2">
@@ -109,6 +122,9 @@ async function onSubmit() {
           <Button class="w-full" type="submit" :disabled="!canSubmit">
             {{ submitting ? "登录中..." : "登录" }}
           </Button>
+          <p v-if="submitError" class="text-sm text-destructive">
+            {{ submitError }}
+          </p>
           <p v-if="submitMessage" class="text-sm text-muted-foreground">
             {{ submitMessage }}
           </p>
