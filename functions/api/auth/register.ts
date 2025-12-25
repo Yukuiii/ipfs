@@ -1,11 +1,14 @@
-import { registerUser } from "../auth";
+import type { EventContext } from "@cloudflare/workers-types";
+import { registerUser, type Env } from "../auth";
 
 /**
  * 注册接口。
  * 路由：POST /api/auth/register
- * @param {{ request: Request, env: Record<string, any> }} context 上下文
+ * @param context 上下文
  */
-export async function onRequestPost(context) {
+export async function onRequestPost(
+  context: EventContext<Env, string, unknown>
+): Promise<Response> {
   try {
     const payload = await context.request.json();
     const result = await registerUser(context.env, payload);
@@ -17,4 +20,3 @@ export async function onRequestPost(context) {
     );
   }
 }
-

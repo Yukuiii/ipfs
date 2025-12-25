@@ -1,8 +1,8 @@
 /**
- * 用户凭证结构定义（输入）。
+ * 用户凭证请求 DTO。
  * 说明：用于注册/登录时提交的最小字段集合。
  */
-export interface UserCredentials {
+export interface UserCredentialsRequestDto {
   /**
    * 用户名。
    */
@@ -13,12 +13,6 @@ export interface UserCredentials {
    */
   password: string;
 }
-
-/**
- * 用户实体结构定义（兼容别名）。
- * 说明：保留 `User` 名称，便于现有引用继续工作。
- */
-export type User = UserCredentials;
 
 /**
  * 用户存储结构定义（持久化）。

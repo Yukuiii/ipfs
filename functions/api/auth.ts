@@ -1,28 +1,19 @@
-/**
- * @typedef {import("./type").UserCredentials} UserCredentials
- * @typedef {import("./type").UserRecord} UserRecord
- */
+import type { D1Database } from "@cloudflare/workers-types";
+import type { UserCredentialsRequestDto } from "./type";
 
 /**
- * 创建用户实体（纯数据结构）。
- * 说明：这里只做最小化字段校验，便于后续接入 D1/鉴权逻辑。
- * @param {UserCredentials} params 用户参数
- * @returns {UserCredentials} 用户实体
+ * Cloudflare Pages Functions 环境变量类型。
  */
-export function createUser(params) {
-  if (!params || typeof params !== "object") {
-    throw new TypeError("用户参数不能为空");
-  }
+export interface Env {
+  /** D1 数据库绑定 */
+  DB: D1Database;
+}
 
-  const { username, password } = params;
-  if (!username || typeof username !== "string") {
-    throw new TypeError("用户名不能为空");
-  }
-  if (!password || typeof password !== "string") {
-    throw new TypeError("密码不能为空");
-  }
-
-  return { username, password };
+/**
+ * 用户登录结果。
+ */
+export interface LoginResult {
+  username: string;
 }
 
 const PASSWORD_HASH_ALGO = "pbkdf2_sha256";
@@ -32,10 +23,10 @@ const PASSWORD_HASH_DERIVED_BITS = 256;
 
 /**
  * 将 Uint8Array 转为 base64 字符串。
- * @param {Uint8Array} bytes 字节数组
- * @returns {string} base64
+ * @param bytes 字节数组
+ * @returns base64
  */
-function bytesToBase64(bytes) {
+function bytesToBase64(bytes: Uint8Array): string {
   // 这里数据量很小（盐与派生值），可直接构造二进制字符串后 btoa。
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -44,10 +35,10 @@ function bytesToBase64(bytes) {
 
 /**
  * 将 base64 字符串转为 Uint8Array。
- * @param {string} base64 base64
- * @returns {Uint8Array} 字节数组
+ * @param base64 base64
+ * @returns 字节数组
  */
-function base64ToBytes(base64) {
+function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) {
@@ -58,11 +49,11 @@ function base64ToBytes(base64) {
 
 /**
  * 常量时间比较，避免根据字符差异提前返回导致的侧信道风险。
- * @param {Uint8Array} a 数组 a
- * @param {Uint8Array} b 数组 b
- * @returns {boolean} 是否相等
+ * @param a 数组 a
+ * @param b 数组 b
+ * @returns 是否相等
  */
-function constantTimeEqual(a, b) {
+function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i += 1) {
@@ -73,9 +64,9 @@ function constantTimeEqual(a, b) {
 
 /**
  * 生成随机盐。
- * @returns {Uint8Array} 盐
+ * @returns 盐
  */
-function generateSalt() {
+function generateSalt(): Uint8Array {
   const salt = new Uint8Array(PASSWORD_HASH_SALT_BYTES);
   crypto.getRandomValues(salt);
   return salt;
@@ -83,12 +74,16 @@ function generateSalt() {
 
 /**
  * 使用 PBKDF2-SHA256 派生密钥。
- * @param {string} password 明文密码
- * @param {Uint8Array} salt 盐
- * @param {number} iterations 迭代次数
- * @returns {Promise<Uint8Array>} 派生结果
+ * @param password 明文密码
+ * @param salt 盐
+ * @param iterations 迭代次数
+ * @returns 派生结果
  */
-async function pbkdf2Sha256(password, salt, iterations) {
+async function pbkdf2Sha256(
+  password: string,
+  salt: Uint8Array,
+  iterations: number
+): Promise<Uint8Array> {
   const encoder = new TextEncoder();
   const baseKey = await crypto.subtle.importKey(
     "raw",
@@ -115,10 +110,10 @@ async function pbkdf2Sha256(password, salt, iterations) {
 /**
  * 生成密码哈希（用于存储）。
  * 格式：`pbkdf2_sha256$iterations$saltBase64$hashBase64`
- * @param {string} password 明文密码
- * @returns {Promise<string>} 哈希串
+ * @param password 明文密码
+ * @returns 哈希串
  */
-export async function hashPassword(password) {
+export async function hashPassword(password: string): Promise<string> {
   if (!password || typeof password !== "string") {
     throw new TypeError("密码不能为空");
   }
@@ -135,11 +130,14 @@ export async function hashPassword(password) {
 
 /**
  * 校验密码是否匹配存储的哈希。
- * @param {string} password 明文密码
- * @param {string} storedHash 存储的哈希串
- * @returns {Promise<boolean>} 是否匹配
+ * @param password 明文密码
+ * @param storedHash 存储的哈希串
+ * @returns 是否匹配
  */
-export async function verifyPassword(password, storedHash) {
+export async function verifyPassword(
+  password: string,
+  storedHash: string
+): Promise<boolean> {
   if (!password || typeof password !== "string") {
     throw new TypeError("密码不能为空");
   }
@@ -164,10 +162,10 @@ export async function verifyPassword(password, storedHash) {
 
 /**
  * 获取 D1 数据库绑定。
- * @param {Record<string, any>} env 环境变量
- * @returns {any} D1 数据库对象
+ * @param env 环境变量
+ * @returns D1 数据库对象
  */
-function getDb(env) {
+function getDb(env: Env): D1Database {
   if (!env || !env.DB || typeof env.DB.prepare !== "function") {
     throw new Error("未配置 D1 绑定：请在 wrangler.toml 中绑定 d1_databases 到 DB");
   }
@@ -176,18 +174,21 @@ function getDb(env) {
 
 /**
  * 注册用户（写入 D1）。
- * @param {Record<string, any>} env 环境变量（需包含 DB）
- * @param {UserCredentials} params 注册参数
- * @returns {Promise<{username: string}>} 注册结果
+ * @param env 环境变量（需包含 DB）
+ * @param params 注册参数
+ * @returns 注册结果
  */
-export async function registerUser(env, params) {
-  const { username, password } = createUser(params);
+export async function registerUser(
+  env: Env,
+  params: UserCredentialsRequestDto
+): Promise<LoginResult> {
+  const { username, password } = params;
 
   const db = getDb(env);
   const exists = await db
     .prepare("SELECT 1 AS ok FROM users WHERE username = ? LIMIT 1")
     .bind(username)
-    .first();
+    .first<{ ok: number }>();
   if (exists?.ok) {
     throw new Error("用户名已存在");
   }
@@ -206,20 +207,21 @@ export async function registerUser(env, params) {
 
 /**
  * 登录用户（校验 D1 中的密码哈希）。
- * @param {Record<string, any>} env 环境变量（需包含 DB）
- * @param {UserCredentials} params 登录参数
- * @returns {Promise<{username: string}>} 登录结果
+ * @param env 环境变量（需包含 DB）
+ * @param params 登录参数
+ * @returns 登录结果
  */
-export async function loginUser(env, params) {
-  const { username, password } = createUser(params);
+export async function loginUser(
+  env: Env,
+  params: UserCredentialsRequestDto
+): Promise<LoginResult> {
+  const { username, password } = params;
 
   const db = getDb(env);
-  /** @type {{ username: string, password_hash: string } | null} */
-  const record =
-    (await db
-      .prepare("SELECT username, password_hash FROM users WHERE username = ?")
-      .bind(username)
-      .first()) ?? null;
+  const record = await db
+    .prepare("SELECT username, password_hash FROM users WHERE username = ?")
+    .bind(username)
+    .first<{ username: string; password_hash: string }>();
 
   if (!record) {
     // 为避免泄露用户名是否存在，统一返回同一错误。
